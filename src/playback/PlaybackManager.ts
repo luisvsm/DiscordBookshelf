@@ -130,7 +130,7 @@ export async function startPlayback(params: {
     absSessionId: playSession.id,
     itemID,
     itemTitle,
-    itemAuthor: playSession.mediaMetadata?.authorName ?? 'Unknown',
+    itemAuthor: playSession.displayAuthor ?? playSession.mediaMetadata?.authorName ?? 'Unknown',
     audioTracks: tracks,
     trackIndex,
     segmentStartPosition: startPosition,

@@ -54,6 +54,8 @@ export interface PlaySession {
   coverPath?: string;
   mediaMetadata: MediaMetadata;
   mediaType: string;
+  displayTitle?: string;
+  displayAuthor?: string;
 }
 
 export interface SearchResult {

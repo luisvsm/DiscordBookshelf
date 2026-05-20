@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { config } from './config';
 import { commands } from './commands';
 import { MODAL_ID } from './commands/connect';
+import { handleVoiceStateUpdate } from './playback/VoiceStateHandler';
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
@@ -10,6 +11,8 @@ const client = new Client({
 client.once(Events.ClientReady, (c) => {
   console.log(`Logged in as ${c.user.tag}`);
 });
+
+client.on(Events.VoiceStateUpdate, handleVoiceStateUpdate);
 
 client.on(Events.InteractionCreate, async (interaction) => {
   // Slash commands

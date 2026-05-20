@@ -23,6 +23,8 @@ export interface GuildSession {
   absClient: AbsClient;
   status: 'playing' | 'paused';
   syncTimer: ReturnType<typeof setInterval>;
+  pausedForEmpty: boolean;
+  emptyChannelTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const sessions = new Map<string, GuildSession>();

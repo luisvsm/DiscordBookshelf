@@ -1,6 +1,6 @@
-import { EmbedBuilder, SlashCommandBuilder } from 'discord.js';
-import { getCurrentPosition, guildSessionStore } from '../playback/GuildSessionStore';
-import { formatDuration } from '../utils';
+import { SlashCommandBuilder } from 'discord.js';
+import { guildSessionStore } from '../playback/GuildSessionStore';
+import { buildNowPlayingEmbed } from './helpers';
 import { Command } from './types';
 
 const nowplaying: Command = {
@@ -21,33 +21,8 @@ const nowplaying: Command = {
       return;
     }
 
-    const currentPos = getCurrentPosition(session);
-    const currentTrack = session.audioTracks[session.trackIndex];
-    const totalDuration = session.audioTracks.reduce((sum, t) => sum + t.duration, 0);
-    const progressPct = totalDuration > 0 ? Math.round((currentPos / totalDuration) * 100) : 0;
-    const progressBar = buildProgressBar(progressPct);
-
-    const embed = new EmbedBuilder()
-      .setTitle(session.itemTitle)
-      .setColor(session.status === 'playing' ? 0x57f287 : 0xfaa61a)
-      .setThumbnail(session.absClient.coverUrl(session.itemID))
-      .addFields(
-        { name: 'Author', value: session.itemAuthor, inline: true },
-        { name: 'Status', value: session.status === 'playing' ? '▶ Playing' : '⏸ Paused', inline: true },
-        { name: 'Track', value: currentTrack.title || `Track ${session.trackIndex + 1}`, inline: true },
-        {
-          name: 'Progress',
-          value: `${formatDuration(currentPos)} / ${formatDuration(totalDuration)}\n${progressBar} ${progressPct}%`,
-        },
-      );
-
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [buildNowPlayingEmbed(session)] });
   },
 };
-
-function buildProgressBar(pct: number): string {
-  const filled = Math.round(pct / 5);
-  return '█'.repeat(filled) + '░'.repeat(20 - filled);
-}
 
 export default nowplaying;

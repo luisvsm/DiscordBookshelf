@@ -1,7 +1,7 @@
-import { MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { GuildTextBasedChannel, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { guildSessionStore } from '../playback/GuildSessionStore';
 import { resumePlayback } from '../playback/PlaybackManager';
-import { beginPlayback, callAbs, replyResult, requireAbsClient, showSelectMenu } from './helpers';
+import { beginPlayback, buildNowPlayingEmbed, callAbs, replyResult, requireAbsClient, showSelectMenu } from './helpers';
 import { Command } from './types';
 
 const resume: Command = {
@@ -20,7 +20,14 @@ const resume: Command = {
     const session = guildSessionStore.get(interaction.guildId);
     if (session) {
       const ok = await resumePlayback(interaction.guildId);
-      await replyResult(interaction, ok, 'Resumed.', 'Already playing — use `/pause` first.');
+      if (ok) {
+        await interaction.deleteReply();
+        await (interaction.channel as GuildTextBasedChannel).send({
+          embeds: [buildNowPlayingEmbed(guildSessionStore.get(interaction.guildId)!)],
+        });
+      } else {
+        await replyResult(interaction, false, '', 'Already playing — use `/pause` first.');
+      }
       return;
     }
 

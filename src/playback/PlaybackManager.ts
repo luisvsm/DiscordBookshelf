@@ -139,6 +139,8 @@ export async function startPlayback(params: {
     absClient,
     status: 'playing',
     syncTimer,
+    pausedForEmpty: false,
+    emptyChannelTimer: null,
   };
 
   guildSessionStore.set(session);
@@ -233,6 +235,7 @@ export async function seekPlayback(guildId: string, targetSeconds: number): Prom
 async function teardownSession(guildId: string, session: GuildSession): Promise<void> {
   const pos = getCurrentPosition(session);
   clearInterval(session.syncTimer);
+  if (session.emptyChannelTimer) clearTimeout(session.emptyChannelTimer);
   guildSessionStore.delete(guildId);
   session.player.stop(true);
   session.connection.destroy();

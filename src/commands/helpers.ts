@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ChatInputCommandInteraction,
   ComponentType,
+  EmbedBuilder,
   GuildMember,
   GuildTextBasedChannel,
   StringSelectMenuBuilder,
@@ -9,9 +10,33 @@ import {
 } from 'discord.js';
 import { AbsClient } from '../abs/client';
 import { LibraryItem } from '../abs/types';
+import { GuildSession, getCurrentPosition, guildSessionStore } from '../playback/GuildSessionStore';
 import { startPlayback } from '../playback/PlaybackManager';
 import { userCredentialStore } from '../users/UserCredentialStore';
-import { scheduleReplyDeletion } from '../utils';
+import { formatDuration, scheduleReplyDeletion } from '../utils';
+
+export function buildNowPlayingEmbed(session: GuildSession): EmbedBuilder {
+  const currentPos = getCurrentPosition(session);
+  const currentTrack = session.audioTracks[session.trackIndex];
+  const totalDuration = session.audioTracks.reduce((sum, t) => sum + t.duration, 0);
+  const progressPct = totalDuration > 0 ? Math.round((currentPos / totalDuration) * 100) : 0;
+  const filled = Math.round(progressPct / 5);
+  const progressBar = '█'.repeat(filled) + '░'.repeat(20 - filled);
+
+  return new EmbedBuilder()
+    .setTitle(session.itemTitle)
+    .setColor(session.status === 'playing' ? 0x57f287 : 0xfaa61a)
+    .setThumbnail(session.absClient.coverUrl(session.itemID))
+    .addFields(
+      { name: 'Author', value: session.itemAuthor, inline: true },
+      { name: 'Status', value: session.status === 'playing' ? '▶ Playing' : '⏸ Paused', inline: true },
+      { name: 'Track', value: currentTrack.title || `Track ${session.trackIndex + 1}`, inline: true },
+      {
+        name: 'Progress',
+        value: `${formatDuration(currentPos)} / ${formatDuration(totalDuration)}\n${progressBar} ${progressPct}%`,
+      },
+    );
+}
 
 /** Returns an AbsClient for the user, or null (and replies with an error) if not connected. */
 export async function requireAbsClient(
@@ -42,7 +67,7 @@ export async function callAbs<T>(
 }
 
 /**
- * Checks voice permissions, opens a play session, then posts "Now playing" publicly
+ * Checks voice permissions, opens a play session, then posts the now-playing embed publicly
  * and deletes the ephemeral reply. Any error from startPlayback propagates to the caller.
  */
 export async function beginPlayback(
@@ -80,10 +105,10 @@ export async function beginPlayback(
     atSeconds,
   });
 
-  const authorStr = item.media.metadata.authorName ? ` by ${item.media.metadata.authorName}` : '';
+  const session = guildSessionStore.get(voiceChannel.guild.id);
   await interaction.deleteReply();
   await (interaction.channel as GuildTextBasedChannel).send(
-    `Now playing **${item.media.metadata.title}**${authorStr}.`,
+    session ? { embeds: [buildNowPlayingEmbed(session)] } : { content: `Now playing **${item.media.metadata.title}**.` },
   );
 }
 

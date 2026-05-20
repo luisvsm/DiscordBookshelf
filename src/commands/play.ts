@@ -1,60 +1,17 @@
 import {
   ActionRowBuilder,
   ComponentType,
-  GuildMember,
-  GuildTextBasedChannel,
   MessageFlags,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
 import { AbsClient } from '../abs/client';
-import { LibraryItem } from '../abs/types';
-import { startPlayback } from '../playback/PlaybackManager';
 import { parseTimestamp, scheduleReplyDeletion } from '../utils';
 import { userCredentialStore } from '../users/UserCredentialStore';
 import { flattenResults } from './search';
+import { beginPlayback } from './helpers';
 import { Command } from './types';
-
-async function beginPlayback(
-  absClient: AbsClient,
-  item: LibraryItem,
-  interaction: Parameters<Command['execute']>[0],
-  atSeconds: number | undefined,
-): Promise<void> {
-  const member = interaction.member as GuildMember;
-  const voiceChannel = member.voice.channel;
-  if (!voiceChannel) {
-    await interaction.editReply('You must be in a voice channel to play audio.');
-    return;
-  }
-
-  const botMember = interaction.guild?.members.me;
-  const perms = voiceChannel.permissionsFor(botMember ?? interaction.client.user);
-  if (!perms?.has(['Connect', 'Speak'])) {
-    await interaction.editReply('I need **Connect** and **Speak** permissions in your voice channel.');
-    return;
-  }
-
-  await interaction.editReply({
-    content: `Starting **${item.media.metadata.title}**${atSeconds !== undefined ? ` at ${atSeconds}s` : ''}…`,
-    components: [],
-  });
-
-  await startPlayback({
-    voiceChannel,
-    textChannel: interaction.channel as GuildTextBasedChannel,
-    userId: interaction.user.id,
-    itemID: item.id,
-    itemTitle: item.media.metadata.title,
-    absClient,
-    atSeconds,
-  });
-
-  const authorStr = item.media.metadata.authorName ? ` by ${item.media.metadata.authorName}` : '';
-  await interaction.deleteReply();
-  await (interaction.channel as GuildTextBasedChannel).send(`Now playing **${item.media.metadata.title}**${authorStr}.`);
-}
 
 const play: Command = {
   data: new SlashCommandBuilder()
@@ -138,16 +95,14 @@ const play: Command = {
 
     const collector = interaction.channel?.createMessageComponentCollector({
       componentType: ComponentType.StringSelect,
-      filter: (i) =>
-        i.customId === 'play-item-select' && i.user.id === interaction.user.id,
+      filter: (i) => i.customId === 'play-item-select' && i.user.id === interaction.user.id,
       time: 30_000,
       max: 1,
     });
 
     collector?.on('collect', async (selectInteraction) => {
       await selectInteraction.deferUpdate();
-      const selectedId = selectInteraction.values[0];
-      const selectedItem = hits.find((h) => h.libraryItem.id === selectedId)?.libraryItem;
+      const selectedItem = hits.find((h) => h.libraryItem.id === selectInteraction.values[0])?.libraryItem;
       if (!selectedItem) return;
       try {
         await beginPlayback(absClient, selectedItem, interaction, atSeconds);

@@ -1,5 +1,5 @@
 import {
-  ActionRowBuilder,
+  LabelBuilder,
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
@@ -16,29 +16,32 @@ const MODAL_ID = 'abs-connect-modal';
 const connect: Command = {
   data: new SlashCommandBuilder()
     .setName('connect')
-    .setDescription('Connect your Audiobookshelf account to this bot'),
+    .setDescription('Connect an Audiobookshelf account to this bot — use a low-privilege account, not your admin account'),
 
   async execute(interaction) {
     const modal = new ModalBuilder()
       .setCustomId(MODAL_ID)
       .setTitle('Connect Audiobookshelf')
-      .addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId('server-url')
-            .setLabel('Server URL')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('https://abs.example.com')
-            .setRequired(true),
-        ),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId('api-token')
-            .setLabel('API Token')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Paste your Audiobookshelf API token')
-            .setRequired(true),
-        ),
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel('Server URL')
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('server-url')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder('https://abs.example.com')
+              .setRequired(true),
+          ),
+        new LabelBuilder()
+          .setLabel('API Key')
+          .setDescription('Don\'t share admin keys. Use least privilege: https://www.audiobookshelf.org/guides/api-keys/')
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('api-token')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder('Paste your Audiobookshelf API Key')
+              .setRequired(true),
+          ),
       );
 
     await interaction.showModal(modal);

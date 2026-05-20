@@ -1,7 +1,8 @@
-import { GuildTextBasedChannel, MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { seekPlayback } from '../playback/PlaybackManager';
 import { guildSessionStore, getCurrentPosition } from '../playback/GuildSessionStore';
 import { parseSeekInput, formatDuration, scheduleReplyDeletion } from '../utils';
+import { replyResult } from './helpers';
 import { Command } from './types';
 
 const seek: Command = {
@@ -41,22 +42,18 @@ const seek: Command = {
         scheduleReplyDeletion(interaction);
         return;
       }
-      const current = getCurrentPosition(session);
-      targetSeconds = Math.max(0, current + parsed.delta);
+      targetSeconds = Math.max(0, getCurrentPosition(session) + parsed.delta);
     } else {
       targetSeconds = parsed.seconds;
     }
 
     const ok = await seekPlayback(interaction.guildId, targetSeconds);
-    if (ok) {
-      await interaction.deleteReply();
-      await (interaction.channel as GuildTextBasedChannel).send(
-        `Seeked to \`${formatDuration(targetSeconds)}\`.`,
-      );
-    } else {
-      await interaction.editReply('Nothing is currently playing.');
-      scheduleReplyDeletion(interaction);
-    }
+    await replyResult(
+      interaction,
+      ok,
+      `Seeked to \`${formatDuration(targetSeconds)}\`.`,
+      'Nothing is currently playing.',
+    );
   },
 };
 

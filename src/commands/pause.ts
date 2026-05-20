@@ -1,6 +1,6 @@
-import { GuildTextBasedChannel, MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { pausePlayback } from '../playback/PlaybackManager';
-import { scheduleReplyDeletion } from '../utils';
+import { replyResult } from './helpers';
 import { Command } from './types';
 
 const pause: Command = {
@@ -15,13 +15,7 @@ const pause: Command = {
       return;
     }
     const ok = await pausePlayback(interaction.guildId);
-    if (ok) {
-      await interaction.deleteReply();
-      await (interaction.channel as GuildTextBasedChannel).send('Paused.');
-    } else {
-      await interaction.editReply('Nothing is currently playing.');
-      scheduleReplyDeletion(interaction);
-    }
+    await replyResult(interaction, ok, 'Paused.', 'Nothing is currently playing.');
   },
 };
 

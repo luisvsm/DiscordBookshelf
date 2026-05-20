@@ -1,6 +1,6 @@
-import { GuildTextBasedChannel, MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { stopPlayback } from '../playback/PlaybackManager';
-import { scheduleReplyDeletion } from '../utils';
+import { replyResult } from './helpers';
 import { Command } from './types';
 
 const stop: Command = {
@@ -15,13 +15,7 @@ const stop: Command = {
       return;
     }
     const ok = await stopPlayback(interaction.guildId);
-    if (ok) {
-      await interaction.deleteReply();
-      await (interaction.channel as GuildTextBasedChannel).send('Stopped and disconnected.');
-    } else {
-      await interaction.editReply('Nothing is playing.');
-      scheduleReplyDeletion(interaction);
-    }
+    await replyResult(interaction, ok, 'Stopped and disconnected.', 'Nothing is playing.');
   },
 };
 

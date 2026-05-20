@@ -206,18 +206,7 @@ export async function resumePlayback(guildId: string): Promise<boolean> {
 export async function stopPlayback(guildId: string): Promise<boolean> {
   const session = guildSessionStore.get(guildId);
   if (!session) return false;
-
-  const currentPos = getCurrentPosition(session);
-  clearInterval(session.syncTimer);
-  guildSessionStore.delete(guildId); // Delete before stop() so the Idle handler is a no-op.
-
-  session.player.stop(true);
-  session.connection.destroy();
-
-  await session.absClient.closeSession(session.absSessionId, currentPos).catch((err) => {
-    console.warn(`[${guildId}] Failed to close ABS session:`, err);
-  });
-
+  await teardownSession(guildId, session);
   return true;
 }
 
@@ -247,5 +236,7 @@ async function teardownSession(guildId: string, session: GuildSession): Promise<
   guildSessionStore.delete(guildId);
   session.player.stop(true);
   session.connection.destroy();
-  await session.absClient.closeSession(session.absSessionId, pos).catch(() => {});
+  await session.absClient.closeSession(session.absSessionId, pos).catch((err) => {
+    console.warn(`[${guildId}] Failed to close ABS session:`, err);
+  });
 }

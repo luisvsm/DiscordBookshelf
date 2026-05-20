@@ -42,6 +42,16 @@ const connect: Command = {
               .setPlaceholder('Paste your Audiobookshelf API Key')
               .setRequired(true),
           ),
+        new LabelBuilder()
+          .setLabel('Encryption Password (optional)')
+          .setDescription('If set, your server URL and API key will be encrypted at rest. Leave blank to store in plaintext.')
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('password')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder('Leave blank for no encryption')
+              .setRequired(false),
+          ),
       );
 
     await interaction.showModal(modal);
@@ -52,6 +62,7 @@ const connect: Command = {
 
     const serverUrl = interaction.fields.getTextInputValue('server-url').trim();
     const apiToken = interaction.fields.getTextInputValue('api-token').trim();
+    const password = interaction.fields.getTextInputValue('password').trim() || undefined;
 
     const client = new AbsClient(serverUrl, apiToken);
     try {
@@ -66,10 +77,12 @@ const connect: Command = {
       discordUserId: interaction.user.id,
       absServerUrl: serverUrl,
       absApiToken: apiToken,
-    });
+    }, password);
 
     await interaction.editReply(
-      `Connected to **${serverUrl}** successfully. Your credentials are saved.`,
+      password
+        ? `Connected to **${serverUrl}** successfully. Your credentials are encrypted and saved.`
+        : `Connected to **${serverUrl}** successfully. Your credentials are saved.`,
     );
   },
 };

@@ -38,14 +38,20 @@ export function buildNowPlayingEmbed(session: GuildSession): EmbedBuilder {
     );
 }
 
-/** Returns an AbsClient for the user, or null (and replies with an error) if not connected. */
+/** Returns an AbsClient for the user, or null (and replies with an error) if not connected or locked. */
 export async function requireAbsClient(
   interaction: ChatInputCommandInteraction,
 ): Promise<AbsClient | null> {
   const creds = userCredentialStore.get(interaction.user.id);
-  if (!creds) {
+  if (creds === undefined) {
     await interaction.editReply(
       "You haven't connected an Audiobookshelf server. Use `/connect` first.",
+    );
+    return null;
+  }
+  if (creds === 'locked') {
+    await interaction.editReply(
+      'Your credentials are encrypted. Use `/unlock` to enter your password first.',
     );
     return null;
   }

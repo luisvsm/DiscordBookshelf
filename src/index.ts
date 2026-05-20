@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { config } from './config';
 import { commands } from './commands';
 import { MODAL_ID } from './commands/connect';
+import { UNLOCK_MODAL_ID } from './commands/unlock';
 import { handleVoiceStateUpdate } from './playback/VoiceStateHandler';
 
 const client = new Client({
@@ -33,15 +34,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // Modal submissions (used by /connect)
-  if (interaction.isModalSubmit() && interaction.customId === MODAL_ID) {
-    const connectCmd = commands.get('connect');
-    if (!connectCmd?.handleModal) return;
+  // Modal submissions
+  if (interaction.isModalSubmit()) {
+    const modalHandlers: Record<string, string> = {
+      [MODAL_ID]: 'connect',
+      [UNLOCK_MODAL_ID]: 'unlock',
+    };
+    const cmdName = modalHandlers[interaction.customId];
+    if (!cmdName) return;
+    const cmd = commands.get(cmdName);
+    if (!cmd?.handleModal) return;
     try {
-      await connectCmd.handleModal(interaction);
+      await cmd.handleModal(interaction);
     } catch (err) {
-      console.error('Error in connect modal:', err);
-      const msg = 'An error occurred while saving your credentials.';
+      console.error(`Error in ${cmdName} modal:`, err);
+      const msg = 'An error occurred.';
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply(msg).catch(() => {});
       } else {

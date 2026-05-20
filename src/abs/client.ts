@@ -1,5 +1,6 @@
 import {
   ItemsInProgressResponse,
+  LibraryItem,
   LibraryItemInProgress,
   Library,
   PlaySession,
@@ -52,13 +53,19 @@ export class AbsClient {
     return results;
   }
 
+  async getItem(itemId: string): Promise<LibraryItem> {
+    return this.request<LibraryItem>(`/api/items/${itemId}`);
+  }
+
   async openPlaySession(itemId: string, startTime?: number, episodeId?: string): Promise<PlaySession> {
-    return this.request<PlaySession>(`/api/items/${itemId}/play`, {
+    const path = episodeId
+      ? `/api/items/${itemId}/play/${episodeId}`
+      : `/api/items/${itemId}/play`;
+    return this.request<PlaySession>(path, {
       method: 'POST',
       body: JSON.stringify({
         deviceInfo: { clientName: 'DiscordBookshelf', deviceId: 'discord-bot' },
         ...(startTime !== undefined ? { startTime } : {}),
-        ...(episodeId !== undefined ? { episodeId } : {}),
       }),
     });
   }

@@ -75,6 +75,7 @@ export async function beginPlayback(
   item: LibraryItem,
   interaction: ChatInputCommandInteraction,
   atSeconds?: number,
+  episodeId?: string,
 ): Promise<void> {
   const member = interaction.member as GuildMember;
   const voiceChannel = member.voice.channel;
@@ -103,6 +104,7 @@ export async function beginPlayback(
     itemTitle: item.media.metadata.title,
     absClient,
     atSeconds,
+    episodeId,
   });
 
   const session = guildSessionStore.get(voiceChannel.guild.id);

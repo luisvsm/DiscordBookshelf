@@ -11,6 +11,13 @@ export interface MediaMetadata {
   duration?: number;
 }
 
+export interface PodcastEpisode {
+  id: string;
+  title: string;
+  publishedAt?: number;
+  duration?: number;
+}
+
 export interface LibraryItem {
   id: string;
   mediaType: string;
@@ -19,6 +26,7 @@ export interface LibraryItem {
     coverPath?: string;
     duration?: number;
     chapters?: Chapter[];
+    episodes?: PodcastEpisode[];
   };
 }
 
@@ -61,6 +69,7 @@ export interface Library {
 
 export interface LibraryItemInProgress extends LibraryItem {
   progressLastUpdate: number;
+  recentEpisode?: PodcastEpisode;
 }
 
 export interface ItemsInProgressResponse {

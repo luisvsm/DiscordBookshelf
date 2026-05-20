@@ -44,8 +44,9 @@ const resume: Command = {
     }
 
     if (booksInProgress.length === 1) {
+      const item = booksInProgress[0];
       try {
-        await beginPlayback(absClient, booksInProgress[0], interaction);
+        await beginPlayback(absClient, item, interaction, undefined, item.recentEpisode?.id);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'An error occurred while starting playback.';
         await interaction.editReply(msg);
@@ -59,10 +60,12 @@ const resume: Command = {
       items: booksInProgress,
       toOption: (item) => ({
         label: item.media.metadata.title.slice(0, 100),
-        description: `[${item.mediaType === 'podcast' ? 'Podcast' : 'Book'}] ${(item.media.metadata.authorName ?? 'Unknown').slice(0, 90)}`,
+        description: item.recentEpisode
+          ? `[Podcast] ${item.recentEpisode.title.slice(0, 90)}`
+          : `[Book] ${(item.media.metadata.authorName ?? 'Unknown').slice(0, 90)}`,
         value: item.id,
       }),
-      onSelect: (item) => beginPlayback(absClient, item, interaction),
+      onSelect: (item) => beginPlayback(absClient, item, interaction, undefined, item.recentEpisode?.id),
     });
   },
 };

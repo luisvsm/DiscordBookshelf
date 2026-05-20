@@ -1,8 +1,52 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { PodcastEpisode } from '../abs/types';
 import { parseTimestamp } from '../utils';
-import { flattenResults } from './search';
+import { flattenResults, SearchHit } from './search';
 import { beginPlayback, callAbs, requireAbsClient, showSelectMenu } from './helpers';
 import { Command } from './types';
+import { AbsClient } from '../abs/client';
+import { ChatInputCommandInteraction } from 'discord.js';
+
+async function playHit(
+  hit: SearchHit,
+  absClient: AbsClient,
+  interaction: ChatInputCommandInteraction,
+  atSeconds?: number,
+): Promise<void> {
+  if (hit.mediaType !== 'podcast') {
+    await beginPlayback(absClient, hit.libraryItem, interaction, atSeconds);
+    return;
+  }
+
+  const fullItem = await callAbs(interaction, () => absClient.getItem(hit.libraryItem.id));
+  if (!fullItem) return;
+
+  const episodes = (fullItem.media.episodes ?? [])
+    .slice()
+    .sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0))
+    .slice(0, 25);
+
+  if (episodes.length === 0) {
+    await interaction.editReply({ content: 'No episodes found for this podcast.', components: [] });
+    return;
+  }
+
+  await showSelectMenu<PodcastEpisode>(interaction, {
+    customId: 'play-episode-select',
+    prompt: `Select an episode of **${hit.libraryItem.media.metadata.title}**:`,
+    items: episodes,
+    toOption: (ep) => ({
+      label: ep.title.slice(0, 100),
+      description: ep.publishedAt
+        ? new Date(ep.publishedAt).toLocaleDateString()
+        : ep.duration
+          ? `${Math.round(ep.duration / 60)} min`
+          : 'No date',
+      value: ep.id,
+    }),
+    onSelect: (ep) => beginPlayback(absClient, fullItem, interaction, atSeconds, ep.id),
+  });
+}
 
 const play: Command = {
   data: new SlashCommandBuilder()
@@ -51,7 +95,7 @@ const play: Command = {
     }
 
     if (hits.length === 1) {
-      await beginPlayback(absClient, hits[0].libraryItem, interaction, atSeconds);
+      await playHit(hits[0], absClient, interaction, atSeconds);
       return;
     }
 
@@ -64,7 +108,7 @@ const play: Command = {
         description: `[${hit.mediaType === 'podcast' ? 'Podcast' : 'Book'}] ${(hit.libraryItem.media.metadata.authorName ?? 'Unknown').slice(0, 90)}`,
         value: hit.libraryItem.id,
       }),
-      onSelect: (hit) => beginPlayback(absClient, hit.libraryItem, interaction, atSeconds),
+      onSelect: (hit) => playHit(hit, absClient, interaction, atSeconds),
     });
   },
 };

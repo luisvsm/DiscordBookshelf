@@ -1,4 +1,10 @@
-import { InProgressHit, ItemsInProgressResponse, LibraryItemInProgress, Library, LibraryItem, PlaySession, SearchResult } from './types';
+import {
+  ItemsInProgressResponse,
+  LibraryItemInProgress,
+  Library,
+  PlaySession,
+  SearchResult,
+} from './types';
 
 export class AbsClient {
   constructor(
@@ -8,7 +14,6 @@ export class AbsClient {
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.serverUrl.replace(/\/$/, '')}${path}`;
-    console.log("Request: ", url);
     const res = await fetch(url, {
       ...options,
       headers: {
@@ -33,27 +38,18 @@ export class AbsClient {
   }
 
   async search(query: string): Promise<SearchResult> {
-    let libraries = await this.getLibraries();
-    let resultsToReturn: SearchResult = {};
+    const libraries = await this.getLibraries();
+    const results: SearchResult = {};
 
     for (const library of libraries) {
-      let searchResult = await this.request<SearchResult>(`/api/libraries/${library.id}/search?q=${encodeURIComponent(query)}`);
-      if(searchResult.book){
-        searchResult.book.forEach(book => {
-          (resultsToReturn.book ??= []).push(book);
-        });
-      }else if(searchResult.podcast){
-        searchResult.podcast.forEach(podcast => {
-          (resultsToReturn.podcast ??= []).push(podcast);
-        });
-      }
+      const result = await this.request<SearchResult>(
+        `/api/libraries/${library.id}/search?q=${encodeURIComponent(query)}`,
+      );
+      if (result.book) (results.book ??= []).push(...result.book);
+      if (result.podcast) (results.podcast ??= []).push(...result.podcast);
     }
 
-    return resultsToReturn;
-  }
-
-  async getItem(id: string): Promise<LibraryItem> {
-    return this.request<LibraryItem>(`/api/items/${id}`);
+    return results;
   }
 
   async openPlaySession(itemId: string, startTime?: number, episodeId?: string): Promise<PlaySession> {
@@ -69,7 +65,6 @@ export class AbsClient {
 
   async getItemsInProgress(): Promise<LibraryItemInProgress[]> {
     const data = await this.request<ItemsInProgressResponse>('/api/me/items-in-progress');
-
     return data.libraryItems;
   }
 

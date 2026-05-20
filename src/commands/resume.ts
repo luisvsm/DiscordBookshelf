@@ -3,12 +3,13 @@ import {
   ComponentType,
   GuildMember,
   GuildTextBasedChannel,
+  MessageFlags,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
 import { AbsClient } from '../abs/client';
-import { PlaySession, LibraryItemInProgress} from '../abs/types';
+import { LibraryItemInProgress } from '../abs/types';
 import { guildSessionStore } from '../playback/GuildSessionStore';
 import { resumePlayback, startPlayback } from '../playback/PlaybackManager';
 import { userCredentialStore } from '../users/UserCredentialStore';
@@ -59,7 +60,7 @@ const resume: Command = {
     .setDescription('Resume a paused or previously played audiobook'),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     if (!interaction.guildId) {
       await interaction.editReply('This command can only be used in a server.');
       return;

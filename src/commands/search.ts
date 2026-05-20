@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from 'discord.js';
+import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { AbsClient } from '../abs/client';
 import { LibraryItem } from '../abs/types';
 import { userCredentialStore } from '../users/UserCredentialStore';
@@ -33,7 +33,7 @@ const search: Command = {
     ) as SlashCommandBuilder,
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const creds = userCredentialStore.get(interaction.user.id);
     if (!creds) {

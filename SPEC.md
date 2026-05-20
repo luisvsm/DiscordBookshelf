@@ -38,7 +38,6 @@ Discord Gateway
       │         ├── /resume    ├── PlaybackManager
       │         ├── /stop      │         │
       │         ├── /seek      │         └── AudioStream
-      │         ├── /skip      │                  │
       │         └── /search ───┘                  ▼
       │                               Audiobookshelf HTTP API
       │                               (per-user credentials)
@@ -110,7 +109,7 @@ ABS has a first-class concept of a "play session" that tracks position server-si
 2. Determine which audio track contains the start position using each track's `startOffset` and `duration`.
 3. Pipe `GET <contentUrl>` (with `Authorization` header) through ffmpeg, passing `-ss <offset>` for the intra-track seek offset.
 4. ffmpeg outputs Opus at 48kHz stereo, which feeds directly into the discord.js AudioPlayer.
-5. On seek/skip, update the local position, find the correct track, close and reopen the ffmpeg process with the new offset, and continue syncing to ABS.
+5. On seek, update the local position, find the correct track, close and reopen the ffmpeg process with the new offset, and continue syncing to ABS.
 
 ---
 
@@ -157,9 +156,6 @@ Stop playback, disconnect from the voice channel, and close the ABS play session
 
 ### `/seek <timestamp>`
 Seek to a specific position. Accepts `HH:MM:SS` or total seconds.
-
-### `/skip [chapters]`
-Skip forward by N chapters (default: 1).
 
 ### `/search <query>`
 Search the library and display results as an embed without starting playback. Returns both audiobooks and podcasts, each labelled `[Book]` or `[Podcast]`.
@@ -253,7 +249,6 @@ discord-bookshelf/
 │   │   ├── resume.ts
 │   │   ├── stop.ts
 │   │   ├── seek.ts
-│   │   ├── skip.ts
 │   │   ├── search.ts
 │   │   └── nowplaying.ts
 │   ├── playback/

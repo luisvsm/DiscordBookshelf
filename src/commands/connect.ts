@@ -1,5 +1,6 @@
 import {
   ActionRowBuilder,
+  MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
   SlashCommandBuilder,
@@ -44,7 +45,7 @@ const connect: Command = {
   },
 
   async handleModal(interaction: ModalSubmitInteraction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const serverUrl = interaction.fields.getTextInputValue('server-url').trim();
     const apiToken = interaction.fields.getTextInputValue('api-token').trim();

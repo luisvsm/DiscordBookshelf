@@ -1,20 +1,14 @@
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { Readable } from 'stream';
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const staticPath: string | null = require('ffmpeg-static') as string | null;
+import staticPath from 'ffmpeg-static';
 
 // Use the bundled binary if it exists on disk, otherwise fall back to system ffmpeg.
 // The static binary may be missing when the project is inside OneDrive (Files On-Demand).
 const FFMPEG_BIN = staticPath && existsSync(staticPath) ? staticPath : 'ffmpeg';
 
-/**
- * Opens a URL through ffmpeg and returns a stdout Readable streaming OggOpus at 48kHz/stereo.
- * seekSeconds is the absolute offset within the file to start from.
- */
+/** Opens a URL through ffmpeg and returns a stdout Readable streaming OggOpus at 48kHz/stereo. */
 export function createAudioStream(url: string, seekSeconds: number): Readable {
-
   const args = [
     '-reconnect', '1',
     '-reconnect_streamed', '1',

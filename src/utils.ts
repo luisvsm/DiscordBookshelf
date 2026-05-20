@@ -1,6 +1,8 @@
 /** Parse "H:MM:SS", "M:SS", or plain seconds into a total-seconds number. Returns null on bad input. */
 export function parseTimestamp(input: string): number | null {
-  const parts = input.trim().split(':').map(Number);
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(':').map(Number);
   if (parts.some((p) => isNaN(p) || p < 0)) return null;
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   if (parts.length === 2) return parts[0] * 60 + parts[1];

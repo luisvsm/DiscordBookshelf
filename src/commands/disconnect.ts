@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { userCredentialStore } from '../users/UserCredentialStore';
 import { Command } from './types';
 
@@ -8,7 +8,7 @@ const disconnect: Command = {
     .setDescription('Remove your stored Audiobookshelf credentials from this bot'),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const removed = userCredentialStore.delete(interaction.user.id);
     await interaction.editReply(
       removed

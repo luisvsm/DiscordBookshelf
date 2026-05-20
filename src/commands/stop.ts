@@ -1,4 +1,4 @@
-import { GuildTextBasedChannel, SlashCommandBuilder } from 'discord.js';
+import { GuildTextBasedChannel, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { stopPlayback } from '../playback/PlaybackManager';
 import { scheduleReplyDeletion } from '../utils';
 import { Command } from './types';
@@ -9,7 +9,7 @@ const stop: Command = {
     .setDescription('Stop playback, save progress, and disconnect from the voice channel'),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     if (!interaction.guildId) {
       await interaction.editReply('This command can only be used in a server.');
       return;

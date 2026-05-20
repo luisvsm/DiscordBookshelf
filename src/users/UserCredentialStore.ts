@@ -1,32 +1,32 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { dirname, resolve } from 'path';
 import { UserCredentials } from '../abs/types';
 
 type StoredEntry = Omit<UserCredentials, 'discordUserId'>;
 type CredentialMap = Record<string, StoredEntry>;
 
-const DATA_DIR = resolve(process.cwd(), 'data');
-const FILE_PATH = resolve(DATA_DIR, 'users.json');
+const DEFAULT_FILE_PATH = resolve(process.cwd(), 'data', 'users.json');
 
 export class UserCredentialStore {
   private store: CredentialMap = {};
 
-  constructor() {
+  constructor(private readonly filePath = DEFAULT_FILE_PATH) {
     this.load();
   }
 
   private load(): void {
-    if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-    if (!existsSync(FILE_PATH)) return;
+    const dir = dirname(this.filePath);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    if (!existsSync(this.filePath)) return;
     try {
-      this.store = JSON.parse(readFileSync(FILE_PATH, 'utf8')) as CredentialMap;
+      this.store = JSON.parse(readFileSync(this.filePath, 'utf8')) as CredentialMap;
     } catch {
       this.store = {};
     }
   }
 
   private persist(): void {
-    writeFileSync(FILE_PATH, JSON.stringify(this.store, null, 2), 'utf8');
+    writeFileSync(this.filePath, JSON.stringify(this.store, null, 2), 'utf8');
   }
 
   get(discordUserId: string): UserCredentials | undefined {

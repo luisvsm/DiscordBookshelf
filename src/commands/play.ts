@@ -3,6 +3,7 @@ import {
   ComponentType,
   GuildMember,
   GuildTextBasedChannel,
+  MessageFlags,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
@@ -70,7 +71,7 @@ const play: Command = {
     ) as SlashCommandBuilder,
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (!interaction.guildId || !interaction.channel?.isTextBased()) {
       await interaction.editReply('This command can only be used in a server text channel.');

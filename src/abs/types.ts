@@ -59,28 +59,10 @@ export interface Library {
   mediaType: string;
 }
 
-export interface UserMediaProgress {
-  id: string;
-  libraryItemId: string;
-  currentTime: number;
-  isFinished: boolean;
-  progress: number;
-}
-
 export interface LibraryItemInProgress extends LibraryItem {
   progressLastUpdate: number;
 }
 
 export interface ItemsInProgressResponse {
   libraryItems: LibraryItemInProgress[];
-}
-
-/** Unified in-progress item used by the /resume select menu. */
-export interface InProgressHit {
-  title: string;
-  subtitle: string;
-  libraryItemId: string;
-  episodeId?: string;
-  mediaType: 'book' | 'podcast';
-  progressLastUpdate: number;
 }

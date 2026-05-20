@@ -20,7 +20,7 @@ import {
 const SYNC_INTERVAL_MS = 30_000;
 
 /** Find which track contains the given absolute book position. */
-function resolveTrack(
+export function resolveTrack(
   tracks: AudioTrack[],
   positionSeconds: number,
 ): { track: AudioTrack; trackIndex: number; inTrackOffset: number } {
@@ -239,18 +239,6 @@ export async function seekPlayback(guildId: string, targetSeconds: number): Prom
   // bypassing Idle, so the auto-advance handler is not triggered.
   playTrack(guildId, track, inTrackOffset);
   return true;
-}
-
-export async function skipPlayback(guildId: string, chapters: number): Promise<boolean> {
-  const session = guildSessionStore.get(guildId);
-  if (!session) return false;
-
-  const targetIndex = Math.min(
-    session.trackIndex + chapters,
-    session.audioTracks.length - 1,
-  );
-  const targetTrack = session.audioTracks[targetIndex];
-  return seekPlayback(guildId, targetTrack.startOffset);
 }
 
 async function teardownSession(guildId: string, session: GuildSession): Promise<void> {

@@ -1,7 +1,7 @@
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { AbsClient } from '../abs/client';
 import { LibraryItem } from '../abs/types';
-import { userCredentialStore } from '../users/UserCredentialStore';
+import { callAbs, requireAbsClient } from './helpers';
 import { Command } from './types';
 
 export type MediaType = 'book' | 'podcast';
@@ -33,27 +33,15 @@ const search: Command = {
     ) as SlashCommandBuilder,
 
   async execute(interaction) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-    const creds = userCredentialStore.get(interaction.user.id);
-    if (!creds) {
-      await interaction.editReply(
-        "You haven't connected an Audiobookshelf server. Use `/connect` first.",
-      );
-      return;
-    }
+    await interaction.deferReply({});
 
     const query = interaction.options.getString('query', true);
-    const absClient = new AbsClient(creds.absServerUrl, creds.absApiToken);
 
-    let results;
-    try {
-      results = await absClient.search(query);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await interaction.editReply(`Could not reach your Audiobookshelf server: ${msg}`);
-      return;
-    }
+    const absClient = await requireAbsClient(interaction);
+    if (!absClient) return;
+
+    const results = await callAbs(interaction, () => absClient.search(query));
+    if (!results) return;
 
     const hits = flattenResults(results);
     if (hits.length === 0) {

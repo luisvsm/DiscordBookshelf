@@ -1,16 +1,7 @@
-import {
-  ActionRowBuilder,
-  ComponentType,
-  MessageFlags,
-  SlashCommandBuilder,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
-} from 'discord.js';
-import { AbsClient } from '../abs/client';
-import { parseTimestamp, scheduleReplyDeletion } from '../utils';
-import { userCredentialStore } from '../users/UserCredentialStore';
+import { MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { parseTimestamp } from '../utils';
 import { flattenResults } from './search';
-import { beginPlayback } from './helpers';
+import { beginPlayback, callAbs, requireAbsClient, showSelectMenu } from './helpers';
 import { Command } from './types';
 
 const play: Command = {
@@ -35,12 +26,6 @@ const play: Command = {
       return;
     }
 
-    const creds = userCredentialStore.get(interaction.user.id);
-    if (!creds) {
-      await interaction.editReply("You haven't connected an Audiobookshelf server. Use `/connect` first.");
-      return;
-    }
-
     const query = interaction.options.getString('query', true);
     const atRaw = interaction.options.getString('at');
     let atSeconds: number | undefined;
@@ -53,16 +38,11 @@ const play: Command = {
       atSeconds = parsed;
     }
 
-    const absClient = new AbsClient(creds.absServerUrl, creds.absApiToken);
+    const absClient = await requireAbsClient(interaction);
+    if (!absClient) return;
 
-    let results;
-    try {
-      results = await absClient.search(query);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await interaction.editReply(`Could not reach your Audiobookshelf server: ${msg}`);
-      return;
-    }
+    const results = await callAbs(interaction, () => absClient.search(query));
+    if (!results) return;
 
     const hits = flattenResults(results);
     if (hits.length === 0) {
@@ -75,48 +55,16 @@ const play: Command = {
       return;
     }
 
-    // Multiple results — show a select menu.
-    const select = new StringSelectMenuBuilder()
-      .setCustomId('play-item-select')
-      .setPlaceholder('Choose a title')
-      .addOptions(
-        hits.map((hit) =>
-          new StringSelectMenuOptionBuilder()
-            .setLabel(hit.libraryItem.media.metadata.title.slice(0, 100))
-            .setDescription(
-              `[${hit.mediaType === 'podcast' ? 'Podcast' : 'Book'}] ${(hit.libraryItem.media.metadata.authorName ?? 'Unknown').slice(0, 90)}`,
-            )
-            .setValue(hit.libraryItem.id),
-        ),
-      );
-
-    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
-    await interaction.editReply({ content: 'Select a title to play:', components: [row] });
-
-    const collector = interaction.channel?.createMessageComponentCollector({
-      componentType: ComponentType.StringSelect,
-      filter: (i) => i.customId === 'play-item-select' && i.user.id === interaction.user.id,
-      time: 30_000,
-      max: 1,
-    });
-
-    collector?.on('collect', async (selectInteraction) => {
-      await selectInteraction.deferUpdate();
-      const selectedItem = hits.find((h) => h.libraryItem.id === selectInteraction.values[0])?.libraryItem;
-      if (!selectedItem) return;
-      try {
-        await beginPlayback(absClient, selectedItem, interaction, atSeconds);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'An error occurred while starting playback.';
-        await interaction.editReply({ content: msg, components: [] }).catch(() => {});
-      }
-    });
-
-    collector?.on('end', async (collected) => {
-      if (collected.size === 0) {
-        await interaction.editReply({ content: 'Selection timed out.', components: [] });
-        scheduleReplyDeletion(interaction);
-      }
+    await showSelectMenu(interaction, {
+      customId: 'play-item-select',
+      prompt: 'Select a title to play:',
+      items: hits,
+      toOption: (hit) => ({
+        label: hit.libraryItem.media.metadata.title.slice(0, 100),
+        description: `[${hit.mediaType === 'podcast' ? 'Podcast' : 'Book'}] ${(hit.libraryItem.media.metadata.authorName ?? 'Unknown').slice(0, 90)}`,
+        value: hit.libraryItem.id,
+      }),
+      onSelect: (hit) => beginPlayback(absClient, hit.libraryItem, interaction, atSeconds),
     });
   },
 };

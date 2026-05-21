@@ -7,6 +7,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from 'discord.js';
+import { config } from '../config';
 import { userCredentialStore } from '../users/UserCredentialStore';
 import { Command } from './types';
 
@@ -51,11 +52,14 @@ const unlock: Command = {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const password = interaction.fields.getTextInputValue('password');
     const ok = userCredentialStore.unlockWithPassword(interaction.user.id, password);
-    await interaction.editReply(
-      ok
-        ? 'Credentials unlocked. Your password will be remembered until the bot restarts.'
-        : 'Incorrect password.',
-    );
+    let successMsg: string;
+    if (config.passwordTtlMs === -1) {
+      successMsg = 'Credentials unlocked. Your password will be remembered indefinitely.';
+    } else {
+      const expiryUnix = Math.floor((Date.now() + config.passwordTtlMs) / 1000);
+      successMsg = `Credentials unlocked. Your password will expire <t:${expiryUnix}:R>.`;
+    }
+    await interaction.editReply(ok ? successMsg : 'Incorrect password.');
   },
 };
 

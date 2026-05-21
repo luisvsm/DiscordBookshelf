@@ -9,6 +9,9 @@ COPY src/ src/
 COPY tsconfig.json tsconfig.build.json ./
 RUN bun run build
 
+ARG BUILD_VERSION=
+RUN echo "{\"version\":\"${BUILD_VERSION}\"}" > version.json
+
 # Stage 2: production
 FROM oven/bun:1-alpine
 RUN apk add --no-cache ffmpeg
@@ -19,6 +22,7 @@ COPY package.json ./
 RUN bun install --production
 
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/version.json ./version.json
 
 VOLUME ["/app/data"]
 

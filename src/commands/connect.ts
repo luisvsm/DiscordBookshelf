@@ -8,6 +8,7 @@ import {
   TextInputStyle,
 } from 'discord.js';
 import { AbsClient } from '../abs/client';
+import { config } from '../config';
 import { userCredentialStore } from '../users/UserCredentialStore';
 import { Command } from './types';
 
@@ -43,14 +44,16 @@ const connect: Command = {
               .setRequired(true),
           ),
         new LabelBuilder()
-          .setLabel('Encryption Password (optional)')
-          .setDescription('If set, your server URL and API key will be encrypted at rest. Leave blank to store in plaintext.')
+          .setLabel(`Encryption Password${config.requireEncryption ? '' : ' (optional)'}`)
+          .setDescription(config.requireEncryption
+            ? 'Required by this server. Your credentials will be encrypted at rest.'
+            : 'If set, your server URL and API key will be encrypted at rest. Leave blank to store in plaintext.')
           .setTextInputComponent(
             new TextInputBuilder()
               .setCustomId('password')
               .setStyle(TextInputStyle.Short)
-              .setPlaceholder('Leave blank for no encryption')
-              .setRequired(false),
+              .setPlaceholder(config.requireEncryption ? 'Enter an encryption password' : 'Leave blank for no encryption')
+              .setRequired(config.requireEncryption),
           ),
       );
 
@@ -63,6 +66,11 @@ const connect: Command = {
     const serverUrl = interaction.fields.getTextInputValue('server-url').trim();
     const apiToken = interaction.fields.getTextInputValue('api-token').trim();
     const password = interaction.fields.getTextInputValue('password').trim() || undefined;
+
+    if (config.requireEncryption && !password) {
+      await interaction.editReply('This bot requires credentials to be encrypted. Please re-run `/connect` and set a password.');
+      return;
+    }
 
     const client = new AbsClient(serverUrl, apiToken);
     try {

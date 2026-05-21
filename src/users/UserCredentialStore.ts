@@ -7,6 +7,7 @@ import {
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { UserCredentials } from '../abs/types';
+import { config } from '../config';
 
 interface PlainEntry {
   absServerUrl: string;
@@ -56,12 +57,31 @@ function decrypt(password: string, entry: EncryptedEntry): string {
   ]).toString('utf8');
 }
 
+interface CachedPassword {
+  password: string;
+  cachedAt: number;
+}
+
+const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
 export class UserCredentialStore {
   private store: CredentialMap = {};
-  private passwordCache = new Map<string, string>();
+  private passwordCache = new Map<string, CachedPassword>();
 
   constructor(private readonly filePath = DEFAULT_FILE_PATH) {
     this.load();
+    const timer = setInterval(() => this.sweepExpiredPasswords(), SWEEP_INTERVAL_MS);
+    timer.unref();
+  }
+
+  private sweepExpiredPasswords(): void {
+    if (config.passwordTtlMs === -1) return;
+    const now = Date.now();
+    for (const [userId, cached] of this.passwordCache) {
+      if (now - cached.cachedAt > config.passwordTtlMs) {
+        this.passwordCache.delete(userId);
+      }
+    }
   }
 
   private load(): void {
@@ -87,8 +107,9 @@ export class UserCredentialStore {
       return { discordUserId, absServerUrl: entry.absServerUrl, absApiToken: entry.absApiToken };
     }
 
-    const password = this.passwordCache.get(discordUserId);
-    if (!password) return 'locked';
+    const cached = this.passwordCache.get(discordUserId);
+    if (!cached) return 'locked';
+    const password = cached.password;
 
     try {
       const { absServerUrl, absApiToken } = JSON.parse(decrypt(password, entry)) as {
@@ -112,7 +133,7 @@ export class UserCredentialStore {
     if (!entry?.encrypted) return false;
     try {
       decrypt(password, entry);
-      this.passwordCache.set(discordUserId, password);
+      this.passwordCache.set(discordUserId, { password, cachedAt: Date.now() });
       return true;
     } catch {
       return false;
@@ -126,7 +147,7 @@ export class UserCredentialStore {
         password,
         JSON.stringify({ absServerUrl: creds.absServerUrl, absApiToken: creds.absApiToken }),
       );
-      this.passwordCache.set(creds.discordUserId, password);
+      this.passwordCache.set(creds.discordUserId, { password, cachedAt: Date.now() });
     } else {
       this.store[creds.discordUserId] = {
         absServerUrl: creds.absServerUrl,

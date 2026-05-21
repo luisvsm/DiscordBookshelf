@@ -10,4 +10,9 @@ export const config = {
   discordToken: requireEnv('DISCORD_TOKEN'),
   discordClientId: requireEnv('DISCORD_CLIENT_ID'),
   guildId: process.env.GUILD_ID ?? null,
+  passwordTtlMs: (() => {
+    const days = parseInt(process.env.PASSWORD_TTL_DAYS ?? '3', 10);
+    return days === -1 ? -1 : days * 24 * 60 * 60 * 1000;
+  })(),
+  requireEncryption: process.env.REQUIRE_ENCRYPTION !== 'false',
 };

@@ -2,6 +2,8 @@
 
 A Discord bot that streams audiobooks and podcasts from your [Audiobookshelf](https://www.audiobookshelf.org/) server into a Discord voice channel. Each Discord user connects their own ABS account — no shared bot credentials required.
 
+> **Early stage:** This bot has only been tested by a single person on a single setup. Expect rough edges and bugs. Issues and PRs are welcome.
+
 ---
 
 ## Prerequisites
@@ -18,7 +20,7 @@ A Discord bot that streams audiobooks and podcasts from your [Audiobookshelf](ht
 - **Stream audiobooks and podcasts** from your Audiobookshelf library directly into a Discord voice channel
 - **Per-user credentials** — each Discord user connects their own ABS account; no shared bot login
 - **Smart resume** — `/resume` picks up where you left off, or shows a menu if you have multiple books in progress
-- **Podcast support** — browse and play individual episodes with date and duration labels
+- **Podcast support** — browse and play individual episodes
 - **Full playback control** — play, pause, resume, stop, and seek with absolute (`1:23:45`) or relative (`+30`, `-60`) timestamps
 - **Progress sync** — position is synced to ABS every 30 seconds and saved on stop, so your progress is preserved across sessions
 - **Auto-pause on empty channel** — pauses when everyone leaves, resumes with a 5-second rewind when someone rejoins
@@ -31,9 +33,8 @@ A Discord bot that streams audiobooks and podcasts from your [Audiobookshelf](ht
 Each person who wants to use the bot in Discord must register their own Audiobookshelf credentials:
 
 1. In Discord, run `/connect`.
-2. A private modal appears — enter your **ABS Server URL** (e.g. `https://abs.example.com`) and your **API Token**.
-3. To find your API token: in Audiobookshelf, go to **Settings → Users**, click your user, and copy the API token.
-4. The bot validates the credentials immediately and confirms success.
+2. A private modal appears — enter your **ABS Server URL** and your **API Token** (See audiobookshelf [API Keys documentation](https://www.audiobookshelf.org/guides/api-keys/)).
+3. The bot validates the credentials immediately and confirms success.
 
 To remove your credentials later, run `/disconnect`.
 
@@ -141,7 +142,7 @@ src/
 ├── commands/                 # One file per slash command
 ├── playback/                 # Voice connection, audio streaming, session state
 ├── abs/                      # Audiobookshelf API client and types
-└── users/                    # Credential store (with optional encryption)
+└── users/                    # Credential store
 ```
 
 For full architecture details, see [SPEC.md](SPEC.md).

@@ -14,7 +14,6 @@ RUN echo "{\"version\":\"${BUILD_VERSION}\"}" > version.json
 
 # Stage 2: production
 FROM oven/bun:1
-RUN apk add --no-cache ffmpeg
 
 WORKDIR /app
 

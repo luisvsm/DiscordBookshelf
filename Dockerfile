@@ -1,5 +1,5 @@
 # Stage 1: build
-FROM oven/bun:1-alpine AS builder
+FROM oven/bun:1 AS builder
 WORKDIR /app
 
 COPY package.json ./
@@ -13,7 +13,7 @@ ARG BUILD_VERSION=
 RUN echo "{\"version\":\"${BUILD_VERSION}\"}" > version.json
 
 # Stage 2: production
-FROM oven/bun:1-alpine
+FROM oven/bun:1
 RUN apk add --no-cache ffmpeg
 
 WORKDIR /app

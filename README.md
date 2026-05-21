@@ -13,48 +13,41 @@ A Discord bot that streams audiobooks and podcasts from your [Audiobookshelf](ht
 
 ---
 
-## Quick Start
+## Features
 
-```bash
-git clone https://github.com/your-username/DiscordBookshelf.git
-cd DiscordBookshelf
-npm install
-cp .env.example .env        # then edit .env with your tokens
-npm run deploy              # register slash commands with Discord
-npm start                   # start the bot
-```
+- **Stream audiobooks and podcasts** from your Audiobookshelf library directly into a Discord voice channel
+- **Per-user credentials** — each Discord user connects their own ABS account; no shared bot login
+- **Smart resume** — `/resume` picks up where you left off, or shows a menu if you have multiple books in progress
+- **Podcast support** — browse and play individual episodes with date and duration labels
+- **Full playback control** — play, pause, resume, stop, and seek with absolute (`1:23:45`) or relative (`+30`, `-60`) timestamps
+- **Progress sync** — position is synced to ABS every 30 seconds and saved on stop, so your progress is preserved across sessions
+- **Auto-pause on empty channel** — pauses when everyone leaves, resumes with a 5-second rewind when someone rejoins
+- **Optional credential encryption** — store your ABS token encrypted at rest with AES-256-GCM
 
 ---
 
-## Creating a Discord Bot
+## Per-User Setup
 
-1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) and click **New Application**.
-2. Give it a name, then open the **Bot** tab.
-3. Click **Reset Token**, copy the token — this is your `DISCORD_TOKEN`.
-4. Copy the **Application ID** from the **General Information** tab — this is your `DISCORD_CLIENT_ID`.
-5. Under **Privileged Gateway Intents**, no special intents are required (the bot only uses `Guilds` and `GuildVoiceStates`).
-6. To invite the bot to your server, go to **OAuth2 → URL Generator**:
-   - Scopes: `bot`, `applications.commands`
-   - Bot permissions: `Connect`, `Speak`, `Send Messages`, `Read Message History`
-   - Open the generated URL and select your server.
+Each person who wants to use the bot in Discord must register their own Audiobookshelf credentials:
+
+1. In Discord, run `/connect`.
+2. A private modal appears — enter your **ABS Server URL** (e.g. `https://abs.example.com`) and your **API Token**.
+3. To find your API token: in Audiobookshelf, go to **Settings → Users**, click your user, and copy the API token.
+4. The bot validates the credentials immediately and confirms success.
+
+To remove your credentials later, run `/disconnect`.
 
 ---
 
 ## Configuration
-
-Copy `.env.example` to `.env` and fill in the values:
-
-```env
-DISCORD_TOKEN=your_bot_token_here
-DISCORD_CLIENT_ID=your_application_id_here
-GUILD_ID=                        # optional — see below
-```
 
 | Variable | Required | Description |
 |---|---|---|
 | `DISCORD_TOKEN` | Yes | Bot token from the Discord Developer Portal |
 | `DISCORD_CLIENT_ID` | Yes | Application ID from the Discord Developer Portal |
 | `GUILD_ID` | No | Server ID for dev mode — makes slash commands appear instantly in one server instead of waiting up to 1 hour for global propagation |
+| `PASSWORD_TTL_DAYS` | No | How long decrypted passwords are cached in memory before expiring (default: `3`). Set to `-1` to never expire. |
+| `REQUIRE_ENCRYPTION` | No | Require all users to set an encryption password when running `/connect` (default: `true`). Set to `false` to allow plaintext credential storage. |
 
 To find your server's ID: enable Developer Mode in Discord (Settings → Advanced), then right-click your server and choose **Copy Server ID**.
 
@@ -73,43 +66,13 @@ npm run deploy
 
 ---
 
-## Running the Bot
-
-**Production (compiled):**
-```bash
-npm run build   # compile TypeScript → dist/
-npm start       # run dist/index.js
-```
-
-**Development (no build step):**
-```bash
-npm run dev     # run src/index.ts directly with tsx
-```
-
-The bot is ready when you see `Logged in as YourBotName#1234` in the console.
-
----
-
-## Per-User Setup
-
-Each person who wants to use the bot in Discord must register their own Audiobookshelf credentials:
-
-1. In Discord, run `/connect`.
-2. A private modal appears — enter your **ABS Server URL** (e.g. `https://abs.example.com`) and your **API Token**.
-3. To find your API token: in Audiobookshelf, go to **Settings → Users**, click your user, and copy the API token.
-4. The bot validates the credentials immediately and confirms success.
-
-To remove your credentials later, run `/disconnect`.
-
----
-
 ## Commands Reference
 
 | Command | Description |
 |---|---|
-| `/connect [password]` | Register your ABS server URL and API token. Provide a `password` to encrypt them at rest. |
+| `/connect` | Register your ABS server URL and API token. Provide a `password` to encrypt them at rest. |
 | `/disconnect` | Remove your stored credentials from the bot. |
-| `/unlock [password]` | After a bot restart, re-enter your encryption password so the bot can access your credentials. |
+| `/unlock` | After a bot restart, re-enter your encryption password so the bot can access your credentials. |
 | `/play <query> [at]` | Search your library and start playback. Optionally start at a specific time (`1:23:45` or `+90`). |
 | `/pause` | Pause the current audiobook or podcast. |
 | `/resume` | Resume playback. If the bot isn't active, shows a menu of your in-progress titles. |
@@ -117,6 +80,7 @@ To remove your credentials later, run `/disconnect`.
 | `/seek <time>` | Jump to a position: `1:23:45`, `5400` (seconds), `+30` (forward), or `-60` (backward). |
 | `/search <query>` | Search your library and display results without starting playback. |
 | `/nowplaying` | Show an embed with the current title, chapter, progress, and cover art. |
+| `/version` | Show the currently running bot version. |
 
 **Usage tips:**
 - You must be in a voice channel before using `/play` or `/resume`.
@@ -125,27 +89,39 @@ To remove your credentials later, run `/disconnect`.
 
 ---
 
-## Optional: Credential Encryption
+## Credential Encryption
 
-By default, your ABS server URL and API token are stored as plaintext in `data/users.json`. You can encrypt them with a password:
+By default (`REQUIRE_ENCRYPTION=true`), every user must set a password when running `/connect`. Credentials are encrypted with AES-256-GCM using a key derived from that password via scrypt and stored in `data/users.json`.
 
+After a bot restart, each user must run `/unlock` before using any playback commands — this re-caches their password in memory. Cached passwords expire after **3 days** (configurable via `PASSWORD_TTL_DAYS`; set to `-1` to never expire). Once expired, run `/unlock` again.
+
+If `REQUIRE_ENCRYPTION=false` is set in `.env`, the password field becomes optional during `/connect`. Users who skip it have their server URL and API token stored as plaintext in `data/users.json` and do not need to run `/unlock`.
+
+---
+
+## Docker
+
+A pre-built image is published to Docker Hub as `luisvsm/discordbookshelf`. The image is rebuilt automatically on every version tag.
+
+```bash
+docker run -d \
+  --name discordbookshelf \
+  -e DISCORD_TOKEN=your_token \
+  -e DISCORD_CLIENT_ID=your_client_id \
+  -v /your/data/path:/app/data \
+  luisvsm/discordbookshelf:latest
 ```
-/connect password:mysecretpassword
-```
 
-Your credentials are encrypted with AES-256-GCM using a key derived from your password via scrypt. The password is never written to disk.
-
-After a bot restart, run `/unlock` (or `/unlock password:mysecretpassword`) before using any playback commands — the password is cached in memory until the next restart.
+The bot's version is baked into the image at build time. `/version` will report it, and the bot uses it to automatically redeploy slash commands whenever the version changes.
 
 ---
 
 ## Development
 
 ```bash
+npm install        # Install required packages
 npm run dev        # run without building (uses tsx)
 npm test           # run unit tests once
-npm run test:watch # run tests in watch mode
-npm run build      # compile TypeScript to dist/
 ```
 
 **Resetting user data:** Delete `data/users.json` to remove all stored credentials.

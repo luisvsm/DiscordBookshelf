@@ -104,7 +104,9 @@ export async function startPlayback(params: {
 
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
-  } catch {
+    console.log(`[${guildId}] Voice connection ready`);
+  } catch (err) {
+    console.error(`[${guildId}] Failed to enter Ready state:`, err);
     connection.destroy();
     throw new Error('Could not connect to the voice channel — check that the bot has Connect and Speak permissions and try again.');
   }
@@ -152,6 +154,7 @@ export async function startPlayback(params: {
     const nextIndex = s.trackIndex + 1;
     if (nextIndex >= s.audioTracks.length) {
       // Book finished — close ABS session and clean up.
+      console.log(`[${guildId}] Playback finished — closing session`);
       const finalPos =
         s.audioTracks[s.audioTracks.length - 1].startOffset +
         s.audioTracks[s.audioTracks.length - 1].duration;
@@ -166,6 +169,7 @@ export async function startPlayback(params: {
     }
 
     const nextTrack = s.audioTracks[nextIndex];
+    console.log(`[${guildId}] Auto-advancing to track ${nextIndex}`);
     guildSessionStore.set({
       ...s,
       trackIndex: nextIndex,
@@ -242,4 +246,5 @@ async function teardownSession(guildId: string, session: GuildSession): Promise<
   await session.absClient.closeSession(session.absSessionId, pos).catch((err) => {
     console.warn(`[${guildId}] Failed to close ABS session:`, err);
   });
+  console.log(`[${guildId}] teardownSession complete`);
 }

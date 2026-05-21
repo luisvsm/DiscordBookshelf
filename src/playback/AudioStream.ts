@@ -1,11 +1,8 @@
 import { spawn } from 'child_process';
-import { existsSync } from 'fs';
 import { Readable } from 'stream';
-import staticPath from 'ffmpeg-static';
 
-// Use the bundled binary if it exists on disk, otherwise fall back to system ffmpeg.
-// The static binary may be missing when the project is inside OneDrive (Files On-Demand).
-const FFMPEG_BIN = staticPath && existsSync(staticPath) ? staticPath : 'ffmpeg';
+const FFMPEG_BIN = 'ffmpeg';
+console.log(`[AudioStream] Using ffmpeg binary: ${FFMPEG_BIN}`);
 
 /** Opens a URL through ffmpeg and returns a stdout Readable streaming OggOpus at 48kHz/stereo. */
 export function createAudioStream(url: string, seekSeconds: number): Readable {
@@ -22,14 +19,24 @@ export function createAudioStream(url: string, seekSeconds: number): Readable {
     '-vbr', 'on',
     '-application', 'audio',
     '-f', 'ogg',
-    '-loglevel', 'quiet',
+    '-loglevel', 'warning',
     'pipe:1',
   ];
 
-  const proc = spawn(FFMPEG_BIN, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+  const proc = spawn(FFMPEG_BIN, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
   proc.on('error', (err) => {
     proc.stdout.destroy(err);
+  });
+
+  proc.on('close', (code, signal) => {
+    // If ffmpeg exited with a failure code and was not killed intentionally (which
+    // would have destroyed stdout first), propagate the failure as a stream error so
+    // the playback error handler fires instead of the Idle handler treating the empty
+    // stream as "book finished".
+    if (code !== 0 && code !== null && !proc.stdout.destroyed) {
+      proc.stdout.destroy(new Error(`ffmpeg exited with code ${code} — check ABS server reachability`));
+    }
   });
 
   return proc.stdout as Readable;

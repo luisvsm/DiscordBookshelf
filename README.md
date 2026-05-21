@@ -9,7 +9,7 @@ A Discord bot that streams audiobooks and podcasts from your [Audiobookshelf](ht
 - **Node.js 24+** — [nodejs.org](https://nodejs.org)
 - **An Audiobookshelf server** — self-hosted; see [Audiobookshelf docs](https://www.audiobookshelf.org/docs)
 - **A Discord bot** — created at the [Discord Developer Portal](https://discord.com/developers/applications)
-- **FFmpeg** — bundled automatically via `ffmpeg-static`; no manual install needed
+- **FFmpeg** — must be installed and available on `$PATH` (`apt install ffmpeg`, `brew install ffmpeg`, etc.)
 
 ---
 

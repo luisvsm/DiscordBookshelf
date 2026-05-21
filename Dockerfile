@@ -14,6 +14,7 @@ RUN echo "{\"version\":\"${BUILD_VERSION}\"}" > version.json
 
 # Stage 2: production
 FROM oven/bun:1
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

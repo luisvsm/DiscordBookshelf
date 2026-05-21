@@ -2,7 +2,7 @@
 
 ## Overview
 
-DiscordBookshelf is a Discord bot that connects to an Audiobookshelf server and streams audiobooks into Discord voice channels. Users can browse their library, play audiobooks, and control playback — all from within Discord.
+DiscordBookshelf is a Discord bot that connects to an Audiobookshelf server and streams audiobooks and podcasts into Discord voice channels. Users can browse their library, play content, and control playback — all from within Discord. Each user registers their own ABS server credentials; there is no bot-wide account.
 
 ---
 
@@ -10,14 +10,15 @@ DiscordBookshelf is a Discord bot that connects to an Audiobookshelf server and 
 
 | Layer | Choice |
 |---|---|
-| Runtime | Node.js 20+ |
+| Runtime | Node.js 24+ |
 | Language | TypeScript (strict mode) |
 | Discord library | discord.js v14 |
 | Voice | @discordjs/voice |
-| Audio pipeline | ffmpeg (via ffmpeg-static) |
-| HTTP client | undici or node-fetch |
+| Audio pipeline | ffmpeg (via ffmpeg-static, system fallback) |
+| HTTP client | Native fetch (Node.js 24 built-in) |
 | Config | dotenv |
 | Build | tsc / tsx for dev |
+| Tests | Vitest |
 
 ---
 
@@ -32,6 +33,7 @@ Discord Gateway
       ├─── Command Router
       │         │
       │         ├── /connect   ─── UserCredentialStore (persisted to disk)
+      │         ├── /unlock    ─── UserCredentialStore (password cache)
       │         │
       │         ├── /play     ─┐
       │         ├── /pause     │
@@ -42,22 +44,28 @@ Discord Gateway
       │                               Audiobookshelf HTTP API
       │                               (per-user credentials)
       │
-      └─── GuildSessionStore (in-memory, per guild)
+      ├─── GuildSessionStore (in-memory, per guild)
+      │
+      └─── VoiceStateHandler (auto-pause / auto-resume)
 ```
 
 ### Key Components
 
 **Bot** — Discord gateway connection, slash command registration, event dispatch.
 
-**CommandRouter** — Maps incoming interactions to handler functions.
+**CommandRouter** — Maps incoming interactions to handler functions. Also handles modal submissions for `/connect` and `/unlock`.
 
-**PlaybackManager** — One instance per guild. Owns the VoiceConnection, AudioPlayer, and current ABS play session.
+**PlaybackManager** — One instance per guild. Owns the VoiceConnection, AudioPlayer, and current ABS play session. Syncs position to ABS every 30 seconds.
 
-**AudioStream** — Fetches the audio file from Audiobookshelf via HTTP range requests, pipes through ffmpeg (for transcoding/seeking), and feeds an AudioResource to the AudioPlayer.
+**AudioStream** — Fetches the audio file from Audiobookshelf via HTTP, pipes through ffmpeg (OggOpus 48kHz stereo), and feeds an AudioResource to the AudioPlayer. Supports seeking via ffmpeg's `-ss` flag. Falls back to system ffmpeg if the bundled binary is unavailable (e.g. OneDrive-hosted installs).
 
-**GuildSessionStore** — In-memory Map keyed by guild ID. Stores which book/chapter is playing, the active ABS session ID, current seek position, and playback status.
+**GuildSessionStore** — In-memory Map keyed by guild ID. Stores which book/episode is playing, the active ABS session ID, current position (calculated from wall-clock elapsed time), and playback status.
 
-**UserCredentialStore** — Persistent store (JSON file on disk) keyed by Discord user ID. Stores each user's ABS server URL and API token. Loaded at startup, written on every update.
+**UserCredentialStore** — Persistent store (JSON file on disk) keyed by Discord user ID. Stores each user's ABS server URL and API token, optionally AES-256-GCM encrypted. Loaded at startup, written on every update.
+
+**VoiceStateHandler** — Reacts to `VoiceStateUpdate` events from Discord:
+- When all humans leave the bot's voice channel: pauses playback, starts a 10-second timer. If the channel is still empty after 10 seconds, stops and disconnects.
+- When a user rejoins while the bot is paused-for-empty: cancels the timer, rewinds 5 seconds, and resumes playback.
 
 ---
 
@@ -71,7 +79,7 @@ Each user registers their own ABS server URL and API token via `/connect`. All A
 Authorization: Bearer <user's ABS_API_TOKEN>
 ```
 
-Commands that require ABS access (`/play`, `/search`, `/nowplaying`, etc.) look up the invoking user's credentials first and reply ephemerally with an error if none are registered.
+Commands that require ABS access (`/play`, `/search`, `/nowplaying`, etc.) look up the invoking user's credentials first and reply ephemerally with an error if none are registered or if the credentials are encrypted and locked.
 
 ### Relevant API Endpoints
 
@@ -79,92 +87,119 @@ Commands that require ABS access (`/play`, `/search`, `/nowplaying`, etc.) look 
 |---|---|
 | Search library | `GET /api/search?q=<query>` |
 | List libraries | `GET /api/libraries` |
-| List items in library | `GET /api/libraries/:id/items` |
-| Get item metadata | `GET /api/items/:id` |
-| Get item with chapters | `GET /api/items/:id?include=chapters` |
-| Stream audio file | `GET /api/items/:id/file/:fileId` |
+| Get item metadata | `GET /api/items/:id?include=chapters` |
 | Start play session | `POST /api/items/:id/play` |
 | Sync session progress | `POST /api/session/:sessionId/sync` |
 | Close play session | `POST /api/session/:sessionId/close` |
-| Get user progress | `GET /api/me/progress/:libraryItemId` |
+| Get items in progress | `GET /api/me/items-in-progress` |
 
 ### ABS Session Management
 
-ABS has a first-class concept of a "play session" that tracks position server-side. The bot uses this natively rather than tracking position itself.
+ABS has a first-class concept of a "play session" that tracks position server-side. The bot uses this natively.
 
 **Opening a session:**
-1. Call `POST /api/items/:id/play` with the body `{ "deviceInfo": { "clientName": "DiscordBookshelf" } }`.
-2. Response includes `sessionId`, `currentTime` (the user's last known position on the ABS server), and an `audioTracks` array (each track has `startOffset`, `duration`, and `contentUrl`).
-3. If `/play` was invoked with an explicit `--at` timestamp, use that as the starting position instead of `currentTime`.
+1. Call `POST /api/items/:id/play` with `{ "deviceInfo": { "clientName": "DiscordBookshelf" } }`.
+2. Response includes `sessionId`, `currentTime` (the user's last saved position), and an `audioTracks` array (each track has `startOffset`, `duration`, and `contentUrl`).
+3. If `/play` was invoked with an explicit `at` timestamp, use that as the starting position instead of `currentTime`.
 
 **Syncing progress during playback:**
-- Every 30 seconds while playing, call `POST /api/session/:sessionId/sync` with `{ "currentTime": <seconds> }` so ABS stays up to date. This is the same sync mechanism ABS mobile/web clients use.
+- Every 30 seconds while playing, call `POST /api/session/:sessionId/sync` with `{ "currentTime": <seconds> }`.
 
 **Closing a session:**
-- On `/stop`, bot disconnect, or when a new book is started, call `POST /api/session/:sessionId/close` with the final `currentTime`. This writes the position to the user's permanent ABS progress record.
+- On `/stop`, bot disconnect, or when a new book starts, call `POST /api/session/:sessionId/close` with the final `currentTime`. This writes the position to the user's permanent ABS progress record.
 
 ### Audio Streaming Strategy
 
-1. Open a play session as above. Resolve the starting position (ABS `currentTime` or user-supplied `--at`).
+1. Open a play session. Resolve the starting position (ABS `currentTime` or user-supplied `at`).
 2. Determine which audio track contains the start position using each track's `startOffset` and `duration`.
 3. Pipe `GET <contentUrl>` (with `Authorization` header) through ffmpeg, passing `-ss <offset>` for the intra-track seek offset.
-4. ffmpeg outputs Opus at 48kHz stereo, which feeds directly into the discord.js AudioPlayer.
-5. On seek, update the local position, find the correct track, close and reopen the ffmpeg process with the new offset, and continue syncing to ABS.
+4. ffmpeg outputs OggOpus at 48kHz stereo, fed directly into the discord.js AudioPlayer.
+5. On track end, auto-advance to the next track. If no more tracks, close the session.
+6. On seek, find the correct track, restart the ffmpeg process with the new offset, and continue syncing.
 
 ---
 
 ## Bot Commands
 
-All commands are Discord slash commands registered globally (or per-guild during development).
+All commands are Discord slash commands registered globally (or per-guild during development). Commands that interact with ABS require the invoking user to have registered credentials via `/connect`.
 
-Commands that interact with ABS (`/play`, `/search`, `/nowplaying`) require the invoking user to have registered credentials via `/connect`. All such commands respond ephemerally if credentials are missing.
+### `/connect [password]`
 
-### `/connect <server_url> <api_token>`
-Register or update the user's Audiobookshelf server address and API token.
-- The entire interaction is ephemeral — no one else sees the token.
-- The bot validates the credentials immediately by calling `GET /api/libraries` and reports success or failure.
-- Credentials are stored in `UserCredentialStore` keyed by Discord user ID, persisted to disk.
+Register or update the user's Audiobookshelf server address and API token. The entire interaction is ephemeral.
+
+- Opens a modal asking for **Server URL** and **API Token** (inputs are not shown in the channel).
+- If `password` is provided, credentials are stored encrypted with AES-256-GCM (see [Credential Encryption](#credential-encryption)).
+- Validates the credentials immediately by calling `GET /api/libraries` and reports success or failure.
+- Credentials are stored in `UserCredentialStore` keyed by Discord user ID and persisted to disk.
 - Running `/connect` again overwrites the previous entry.
 
 ### `/disconnect`
-Remove the user's stored ABS credentials from the bot.
-- Responds ephemerally to confirm.
+
+Remove the user's stored ABS credentials. Responds ephemerally to confirm.
+
+### `/unlock [password]`
+
+Decrypt and cache the user's encrypted credentials for the current bot session.
+
+- If `password` is omitted, opens a modal to enter it securely.
+- On success, the password is cached in memory — credentials remain accessible until the bot restarts without needing to `/unlock` again.
+- Has no effect if credentials are not encrypted.
 
 ### `/play <query> [at: HH:MM:SS]`
+
 Search the user's Audiobookshelf library and begin playback. Matches both audiobooks and podcasts.
+
 - If the bot is not in a voice channel, it joins the caller's current channel.
-- Results from all libraries are merged (books first, then podcasts) and capped at 5. If multiple results are found, a select menu is shown labelling each result as `[Book]` or `[Podcast]`.
-- Without `at`: begins from the position stored in the user's ABS progress (`currentTime` returned by the play session).
+- Results from all libraries are merged (books first, then podcasts) and capped at 5. If multiple results are found, a select menu is shown labelling each as `[Book]` or `[Podcast]`.
+- For podcasts, after selecting a podcast, a second select menu lists the most recent episodes with their date and duration.
+- Without `at`: begins from the position stored in the user's ABS progress (`currentTime`).
 - With `at`: ignores ABS progress and starts from the specified timestamp. Accepts `HH:MM:SS`, `MM:SS`, or raw seconds.
-- Opens an ABS play session and begins syncing progress every 30 seconds.
+- Sends a "now playing" embed to the text channel.
 
 ### `/pause`
-Pause the current audio stream. Syncs the current position to ABS via session sync.
+
+Pause the current audio stream. Syncs the current position to ABS.
 
 ### `/resume`
-Smart resume with two behaviours depending on bot state:
 
-**Bot is active in this server (session paused):** Unpauses the current stream immediately.
+Smart resume with two behaviours:
 
-**Bot is not in a voice channel:** Calls `GET /api/me/items-in-progress` to fetch all in-progress books and podcast episodes for the invoking user.
+**Bot has an active session in this guild (currently paused):** Unpauses the stream immediately.
+
+**Bot is not in a voice channel:** Calls `GET /api/me/items-in-progress` for the invoking user.
 - If one result: auto-resumes it, joining the caller's voice channel and seeking to the saved `currentTime`.
-- If multiple results: shows a select menu listing each title, author/podcast, timestamp, and progress percentage. User selects and the bot joins and resumes.
-- Requires the user to be in a voice channel before a selection is made.
+- If multiple results: shows a select menu with each title, author/podcast, and progress percentage.
+- Requires the user to be in a voice channel before selecting.
 
 ### `/stop`
-Stop playback, disconnect from the voice channel, and close the ABS play session (writes final position to the user's ABS progress).
+
+Stop playback, disconnect from the voice channel, and close the ABS play session (saves final position).
 
 ### `/seek <timestamp>`
-Seek to a specific position. Accepts `HH:MM:SS` or total seconds.
+
+Seek to a specific position. Accepts:
+- Absolute: `HH:MM:SS`, `MM:SS`, or raw seconds (e.g. `3600`)
+- Relative: `+<seconds>` to jump forward or `-<seconds>` to jump backward (e.g. `+30`, `-60`)
 
 ### `/search <query>`
-Search the library and display results as an embed without starting playback. Returns both audiobooks and podcasts, each labelled `[Book]` or `[Podcast]`.
+
+Search the library and display results as an embed without starting playback. Returns up to 5 results, each labelled `[Book]` or `[Podcast]`.
 
 ### `/nowplaying`
-Display an embed showing the current book, chapter, progress, and cover art.
 
-### `/queue` *(stretch goal)*
-Queue multiple books to play in sequence.
+Display an embed showing the current book/episode, chapter, progress bar, cover art, and playback status.
+
+---
+
+## Credential Encryption
+
+Credentials can be optionally encrypted at rest using AES-256-GCM:
+
+- **Encrypting:** Pass a `password` to `/connect`. The server URL and API token are encrypted and stored as `{ encrypted: true, salt, iv, tag, data }`.
+- **Key derivation:** scrypt with a random 16-byte salt, producing a 32-byte key.
+- **Unlocking:** After a bot restart, run `/unlock` to re-cache the password. Commands will reply with an "encrypted and locked" error otherwise.
+- **Password cache:** Stored in memory only; cleared on bot restart. The plaintext password is never written to disk.
+- **Plaintext mode:** If no password is given to `/connect`, credentials are stored as-is in `data/users.json`.
 
 ---
 
@@ -176,33 +211,55 @@ Queue multiple books to play in sequence.
 interface GuildSession {
   guildId: string;
   voiceChannelId: string;
-  textChannelId: string;
+  textChannel: GuildTextBasedChannel;       // discord.js channel object
   connection: VoiceConnection;
   player: AudioPlayer;
-  absSessionId: string;       // ABS play session ID, used for sync/close
-  item: LibraryItem;
+  absSessionId: string;                     // ABS play session ID for sync/close
+  itemID: string;
+  itemTitle: string;
+  itemAuthor: string;
   audioTracks: AudioTrack[];
-  trackIndex: number;         // index into audioTracks array
-  seekPosition: number;       // seconds from start of current track (updated every sync)
-  startedByUserId: string;    // Discord user ID who started playback (whose ABS credentials to use)
-  status: 'playing' | 'paused' | 'stopped';
-  syncTimer: NodeJS.Timeout;  // 30s interval that calls session sync
+  trackIndex: number;                       // current index into audioTracks
+  segmentStartPosition: number;            // absolute book position (seconds) when segment began
+  segmentStartedAt: number;               // wall-clock timestamp (Date.now()) when segment began
+  startedByUserId: string;                // Discord user ID whose ABS credentials to use
+  absClient: AbsClient;
+  status: 'playing' | 'paused';
+  syncTimer: ReturnType<typeof setInterval>;
+  pausedForEmpty: boolean;
+  emptyChannelTimer: ReturnType<typeof setTimeout> | null;
 }
 ```
 
-One session per guild. A new `/play` command closes the existing ABS session and replaces the guild session.
+Current position is computed as:
+- If paused: `segmentStartPosition`
+- If playing: `segmentStartPosition + (Date.now() - segmentStartedAt) / 1000`
+
+One session per guild. A new `/play` closes the existing ABS session and replaces the guild session.
 
 ### User Credentials (persisted to disk)
 
+**Plaintext entry:**
 ```typescript
-interface UserCredentials {
-  discordUserId: string;
-  absServerUrl: string;   // e.g. "https://abs.example.com"
+interface PlainEntry {
+  absServerUrl: string;    // e.g. "https://abs.example.com"
   absApiToken: string;
+  encrypted?: false;
 }
 ```
 
-Stored as a JSON file (`data/users.json`). Loaded into memory at startup, written on every change. The file should be excluded from version control (`.gitignore`).
+**Encrypted entry:**
+```typescript
+interface EncryptedEntry {
+  encrypted: true;
+  salt: string;            // 16-byte random salt (hex)
+  iv: string;              // 12-byte AES-GCM IV (hex)
+  tag: string;             // 16-byte GCM auth tag (hex)
+  data: string;            // AES-256-GCM ciphertext (hex) of JSON { absServerUrl, absApiToken }
+}
+```
+
+Stored as `Record<discordUserId, PlainEntry | EncryptedEntry>` in `data/users.json`. Loaded at startup, written on every change. Excluded from version control.
 
 ---
 
@@ -211,12 +268,10 @@ Stored as a JSON file (`data/users.json`). Loaded into memory at startup, writte
 Bot-level config via environment variables (`.env`, never committed). Per-user ABS credentials are stored separately in `data/users.json`.
 
 ```env
-DISCORD_TOKEN=
-DISCORD_CLIENT_ID=
-GUILD_ID=                  # optional: dev guild for fast command registration
+DISCORD_TOKEN=          # required — bot token from Discord Developer Portal
+DISCORD_CLIENT_ID=      # required — application client ID
+GUILD_ID=               # optional — dev guild for instant slash command registration
 ```
-
-There is no bot-wide ABS server URL or API token — each user supplies their own via `/connect`.
 
 ---
 
@@ -225,13 +280,14 @@ There is no bot-wide ABS server URL or API token — each user supplies their ow
 | Scenario | Behavior |
 |---|---|
 | User has no registered credentials | Reply ephemerally: "You haven't connected an Audiobookshelf server. Use `/connect` first." |
+| Credentials are encrypted and locked | Reply ephemerally: "Your credentials are encrypted. Use `/unlock` to enter your password first." |
 | `/connect` credentials fail validation | Reply ephemerally with the HTTP status/error from ABS. Credentials are not saved. |
 | User not in a voice channel | Reply ephemerally: "You must be in a voice channel." |
-| Audiobookshelf unreachable | Reply ephemerally: "Could not reach your Audiobookshelf server." |
+| Bot lacks voice permissions | Reply ephemerally listing required permissions (Connect, Speak). |
+| Audiobookshelf unreachable | Reply ephemerally: "Could not reach your Audiobookshelf server: [error]" |
 | No search results | Reply ephemerally: "No results found for `<query>`." |
-| ABS session sync fails | Log warning, continue playback — non-fatal. Retry on next interval. |
-| Stream drops mid-playback | Close ABS session with last known position, log error, send message to text channel, attempt one reconnect |
-| Bot lacks voice permissions | Reply ephemerally with required permissions listed |
+| ABS session sync fails | Log warning, continue playback — non-fatal. |
+| Stream error mid-playback | Log error, send message to text channel, stop playback. |
 
 ---
 
@@ -240,34 +296,44 @@ There is no bot-wide ABS server URL or API token — each user supplies their ow
 ```
 discord-bookshelf/
 ├── src/
-│   ├── index.ts              # Entry point: login, event wiring
+│   ├── index.ts                      # Entry point: login, event wiring
+│   ├── config.ts                     # Env var loading and validation
+│   ├── utils.ts                      # Timestamp parsing and formatting helpers
+│   ├── deploy-commands.ts            # One-shot script to register slash commands
 │   ├── commands/
-│   │   ├── connect.ts
-│   │   ├── disconnect.ts
-│   │   ├── play.ts
-│   │   ├── pause.ts
-│   │   ├── resume.ts
-│   │   ├── stop.ts
-│   │   ├── seek.ts
-│   │   ├── search.ts
-│   │   └── nowplaying.ts
+│   │   ├── index.ts                  # Exports command collection
+│   │   ├── types.ts                  # Command interface
+│   │   ├── helpers.ts                # Shared: AbsClient setup, playback initiation, embeds
+│   │   ├── connect.ts                # /connect
+│   │   ├── disconnect.ts             # /disconnect
+│   │   ├── unlock.ts                 # /unlock
+│   │   ├── play.ts                   # /play
+│   │   ├── pause.ts                  # /pause
+│   │   ├── resume.ts                 # /resume
+│   │   ├── stop.ts                   # /stop
+│   │   ├── seek.ts                   # /seek
+│   │   ├── search.ts                 # /search
+│   │   └── nowplaying.ts             # /nowplaying
 │   ├── playback/
-│   │   ├── PlaybackManager.ts
-│   │   ├── AudioStream.ts
-│   │   └── GuildSessionStore.ts
+│   │   ├── PlaybackManager.ts        # start/pause/resume/stop/seek logic
+│   │   ├── AudioStream.ts            # ffmpeg-based audio stream creation
+│   │   ├── GuildSessionStore.ts      # In-memory per-guild session state
+│   │   └── VoiceStateHandler.ts      # Auto-pause/resume on channel empty/rejoin
 │   ├── abs/
-│   │   ├── client.ts         # Audiobookshelf API wrapper (per-user credentials)
-│   │   └── types.ts          # API response types
-│   ├── users/
-│   │   └── UserCredentialStore.ts  # Load/save data/users.json
-│   ├── deploy-commands.ts    # One-shot script to register slash commands
-│   └── config.ts             # Env var loading and validation
+│   │   ├── client.ts                 # Audiobookshelf API wrapper (per-user credentials)
+│   │   └── types.ts                  # API response types
+│   └── users/
+│       └── UserCredentialStore.ts    # Load/save/encrypt data/users.json
+├── tests/
+│   └── utils.test.ts                 # Unit tests for timestamp utilities
 ├── data/
-│   └── users.json            # Persisted user credentials (gitignored)
+│   └── users.json                    # Persisted user credentials (gitignored)
 ├── .env.example
 ├── .gitignore
 ├── package.json
 ├── tsconfig.json
+├── tsconfig.build.json
+├── vitest.config.ts
 └── SPEC.md
 ```
 
@@ -278,27 +344,29 @@ discord-bookshelf/
 ```json
 {
   "dependencies": {
-    "discord.js": "^14",
-    "@discordjs/voice": "^0.17",
-    "@discordjs/opus": "^0.9",
-    "ffmpeg-static": "^5",
-    "dotenv": "^16"
+    "discord.js": "^14.26.4",
+    "@discordjs/voice": "^0.19.2",
+    "ffmpeg-static": "^5.3.0",
+    "dotenv": "^17.4.2",
+    "libsodium-wrappers": "^0.8.4"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "tsx": "^4",
-    "@types/node": "^20"
+    "typescript": "^6.0.3",
+    "tsx": "^4.22.3",
+    "@types/node": "^25.9.1",
+    "@types/libsodium-wrappers": "^0.7.14",
+    "vitest": "^4.1.5"
   }
 }
 ```
 
-`libsodium-wrappers` or `sodium-native` may be needed for voice encryption depending on platform.
+`libsodium-wrappers` is required by `@discordjs/voice` for voice channel encryption. HTTP requests use Node.js 24's built-in `fetch`; no separate HTTP client library is needed.
 
 ---
 
-## Out of Scope (v1)
+## Out of Scope
 
 - Multi-user queue management / voting to skip
 - Web dashboard
 - Persistent guild sessions across bot restarts
-- Encrypted storage for user credentials (currently plaintext JSON)
+- `/queue` command for sequential book playback

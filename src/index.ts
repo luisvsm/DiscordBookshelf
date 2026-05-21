@@ -1,4 +1,5 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
+import { checkCommandDeployment } from './checkCommandDeployment';
 import { config } from './config';
 import { commands } from './commands';
 import { MODAL_ID } from './commands/connect';
@@ -58,7 +59,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-client.login(config.discordToken).catch((err) => {
-  console.error('Failed to log in:', err);
-  process.exit(1);
-});
+checkCommandDeployment()
+  .catch((err) => console.error('Command deployment check failed:', err))
+  .finally(() => {
+    client.login(config.discordToken).catch((err) => {
+      console.error('Failed to log in:', err);
+      process.exit(1);
+    });
+  });

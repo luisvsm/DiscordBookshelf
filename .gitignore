@@ -2,3 +2,5 @@ node_modules/
 dist/
 .env
 data/users.json
+data/deployed-version.json
+version.json

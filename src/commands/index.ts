@@ -10,9 +10,10 @@ import search from './search';
 import seek from './seek';
 import stop from './stop';
 import unlock from './unlock';
+import version from './version';
 
 export const commands = new Collection<string, Command>();
 
-for (const cmd of [connect, disconnect, play, pause, resume, stop, seek, search, nowplaying, unlock]) {
+for (const cmd of [connect, disconnect, play, pause, resume, stop, seek, search, nowplaying, unlock, version]) {
   commands.set(cmd.data.name, cmd);
 }
